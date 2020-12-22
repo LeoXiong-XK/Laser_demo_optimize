@@ -1,3 +1,4 @@
+ver
 mkdir build
 cd build
 
