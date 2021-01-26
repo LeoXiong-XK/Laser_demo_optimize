@@ -1,4 +1,4 @@
 INCLUDE_DIRECTORIES(${LASER_OPTIMIZE_SOURCE_DIR}/src/base
 					${LASER_OPTIMIZE_SOURCE_DIR}/dep
                     )
-ADD_EXECUTABLE(Laser_Optimize main.cpp lidar_delat_2a.cpp)
+ADD_EXECUTABLE(Laser_Optimize main.cpp lidar_delat_2a.cpp laser_lidar_g4.cpp win_serial.cpp)

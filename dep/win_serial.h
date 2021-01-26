@@ -16,7 +16,7 @@
 #ifndef UNICODE_WAS_UNDEFINED
 #undef UNICODE
 #endif
-
+#define CBR_230400	230400
 
 class Serial {
  public:

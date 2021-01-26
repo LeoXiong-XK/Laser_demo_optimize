@@ -8,7 +8,7 @@
 
 using namespace std;
 Serial delat_serial;
-bool retval = false;
+
 	
 static uint16_t find_head_offset(const uint8_t* buf, const uint16_t buf_len, const uint8_t* head_val, const uint16_t head_len) {
 	uint16_t head_found_count = 0;
@@ -43,6 +43,7 @@ bool checksum_crc(unsigned char buf[PER_PACKAGE_NUM_POINT]) {
 	return ret;
 }
 int lidar_delat_get_data(void) {
+	bool retval = false;
 	const uint32_t serial_baudrate = 115200;
 	retval = delat_serial.open("COM7", 115200);
 	if (retval) {
