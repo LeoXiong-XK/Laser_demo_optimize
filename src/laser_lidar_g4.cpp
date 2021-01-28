@@ -62,6 +62,162 @@ void LiDAR_Resume() {
 		G4_serial.write(cmd_buf, 2);
 	}
 }
+result_t sendData(const uint8_t *data, size_t size) {
+
+	if (data == NULL || size == 0) {
+		return RESULT_FAIL;
+	}
+
+	size_t r = 0;
+
+	while (size) {
+		r = G4_serial.write(data, size);
+
+		if (r < 1) {
+			return RESULT_FAIL;
+		}
+
+		size -= r;
+		data += r;
+	}
+
+	return RESULT_OK;
+}
+result_t sendCommand(uint8_t cmd, const void *payload,
+	size_t payloadsize) {
+	cmd_packet;
+	uint8_t pkt_header[10];
+	cmd_packet *header = reinterpret_cast<cmd_packet * >(pkt_header);
+	uint8_t checksum = 0;
+
+
+	if (payloadsize && payload) {
+		cmd |= LIDAR_CMDFLAG_HAS_PAYLOAD;
+	}
+
+	header->syncByte = LIDAR_CMD_SYNC_BYTE;
+	header->cmd_flag = cmd;
+	sendData(pkt_header, 2);
+
+	if ((cmd & LIDAR_CMDFLAG_HAS_PAYLOAD) && payloadsize && payload) {
+		checksum ^= LIDAR_CMD_SYNC_BYTE;
+		checksum ^= cmd;
+		checksum ^= (payloadsize & 0xFF);
+
+		for (size_t pos = 0; pos < payloadsize; ++pos) {
+			checksum ^= ((uint8_t *)payload)[pos];
+		}
+
+		uint8_t sizebyte = (uint8_t)(payloadsize);
+		sendData(&sizebyte, 1);
+
+		sendData((const uint8_t *)payload, sizebyte);
+
+		sendData(&checksum, 1);
+	}
+
+	return RESULT_OK;
+}
+result_t waitResponseHeader(lidar_ans_header *header,
+	uint32_t timeout) {
+	int  recvPos = 0;
+	uint32_t startTs = getms();
+	uint8_t  recvBuffer[sizeof(lidar_ans_header)];
+	uint8_t  *headerBuffer = reinterpret_cast<uint8_t *>(header);
+	uint32_t waitTime = 0;
+	has_device_header = false;
+	last_device_byte = 0x00;
+
+	while ((waitTime = getms() - startTs) <= timeout) {
+		size_t remainSize = sizeof(lidar_ans_header) - recvPos;
+		size_t recvSize = 0;
+		result_t ans = waitForData(remainSize, timeout - waitTime, &recvSize);
+
+		if (!IS_OK(ans)) {
+			return ans;
+		}
+
+		if (recvSize > remainSize) {
+			recvSize = remainSize;
+		}
+
+		ans = getData(recvBuffer, recvSize);
+
+		if (IS_FAIL(ans)) {
+			return RESULT_FAIL;
+		}
+
+		for (size_t pos = 0; pos < recvSize; ++pos) {
+			uint8_t currentByte = recvBuffer[pos];
+
+			switch (recvPos) {
+			case 0:
+				if (currentByte != LIDAR_ANS_SYNC_BYTE1) {
+					if (last_device_byte == (PH & 0xFF) && currentByte == (PH >> 8)) {
+						has_device_header = true;
+					}
+
+					last_device_byte = currentByte;
+					continue;
+				}
+
+				break;
+
+			case 1:
+				if (currentByte != LIDAR_ANS_SYNC_BYTE2) {
+					last_device_byte = currentByte;
+					recvPos = 0;
+					continue;
+				}
+
+				break;
+			}
+
+			headerBuffer[recvPos++] = currentByte;
+			last_device_byte = currentByte;
+
+			if (recvPos == sizeof(lidar_ans_header)) {
+				return RESULT_OK;
+			}
+		}
+	}
+
+	return RESULT_FAIL;
+}
+/************************************************************************/
+/* get the current scan frequency of lidar                              */
+/************************************************************************/
+result_t getScanFrequency(uint32_t &frequency,
+	uint32_t timeout) {
+	result_t  ans;
+	{
+
+		if ((ans = sendCommand(LIDAR_CMD_GET_AIMSPEED)) != RESULT_OK) {
+			return ans;
+		}
+
+		lidar_ans_header response_header;
+
+		if ((ans = waitResponseHeader(&response_header, timeout)) != RESULT_OK) {
+			return ans;
+		}
+
+		if (response_header.type != LIDAR_ANS_TYPE_DEVINFO) {
+			return RESULT_FAIL;
+		}
+
+		if (response_header.size != sizeof(frequency)) {
+			return RESULT_FAIL;
+		}
+
+		if (waitForData(response_header.size, timeout) != RESULT_OK) {
+			return RESULT_FAIL;
+		}
+
+		getData(reinterpret_cast<uint8_t *>(&frequency), sizeof(frequency));
+	}
+	return RESULT_OK;
+}
 int Get_LiDAR_Data_G4(void) {
 	bool retval = false;
 	const uint32_t serial_baudrate = 230400;
@@ -71,7 +227,8 @@ int Get_LiDAR_Data_G4(void) {
 	}
 	G4_serial.setDTR(true);
 	G4_serial.flushInput();
-	LiDAR_Resume();
+	//LiDAR_Resume();
+	sendCommand(LIDAR_CMD_SCAN);
 	float laser_angle = 0.0;
 	printf("laser_ydlidar_g4 angle=%f retval=%d\r\n", laser_angle, retval);
 	uint16_t FirstSampleAngle, LastSampleAngle;
